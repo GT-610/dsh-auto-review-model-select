@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto review model",
+    "description": "Route Auto review to a chosen model and normalize its decision output."
+  }
+}

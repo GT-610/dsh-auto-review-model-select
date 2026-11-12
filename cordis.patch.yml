@@ -1,0 +1,7 @@
+# Auto review model selection + output repair.
+# The row id doubles as the settings namespace the Client config card edits, so
+# keep it identical to the package name.
+- insert:
+    - id: dsh-auto-review-model-select
+      name: 'dsh-auto-review-model-select'
+      config: {}
