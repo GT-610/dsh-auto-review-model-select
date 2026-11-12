@@ -1,4 +1,4 @@
-English | [中文](README.md)
+[中文](README.md)
 
 # Auto review model
 
@@ -65,3 +65,7 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 pnpm install
 pnpm check   # typecheck + build + 27 unit tests
 ```
+
+## License
+
+[MIT](LICENSE)

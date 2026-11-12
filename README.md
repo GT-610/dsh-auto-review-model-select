@@ -1,4 +1,4 @@
-[English](README.en-US.md) | 中文
+[English](README.en-US.md)
 
 # 自动审查模型
 
@@ -65,3 +65,7 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 pnpm install
 pnpm check   # 类型检查 + 构建 + 27 个单元测试
 ```
+
+## 许可
+
+[MIT](LICENSE)
