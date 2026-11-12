@@ -1,6 +1,6 @@
 [中文](README.md)
 
-# Auto review model
+# dsh-auto-review-model-select
 
 Route DeepSeek Harness Auto review to a chosen model and normalize decision output that breaks the reviewer protocol.
 

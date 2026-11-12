@@ -1,6 +1,6 @@
 [English](README.en-US.md)
 
-# 自动审查模型
+# dsh-auto-review-model-select
 
 让 DeepSeek Harness 的「自动审查」改用指定模型，并把不合规的裁决输出就地修正。
 
