@@ -213,6 +213,24 @@ test('retries once with a correction and uses the second reply', async () => {
   });
 });
 
+test('falls back when the retry dispatch throws', async () => {
+  const stream = createReviewStream(
+    chunks([{ type: 'text-delta', index: 0, text: 'no decision' }, { type: 'finish', reason: { kind: 'stop' } }]),
+    {
+      retry: 1,
+      attempt: async () => {
+        throw new Error('provider unavailable');
+      },
+      fallback: 'deny',
+    },
+  );
+  const output = await drain(stream);
+  const decision = JSON.parse(textOf(output));
+  assert.equal(decision.risk, 'medium');
+  assert.equal(decision.decision, 'deny');
+  assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
+});
+
 test('throws when the upstream never settles', async () => {
   await assert.rejects(
     drain(createReviewStream(chunks([{ type: 'text-delta', index: 0, text: 'x' }]))),

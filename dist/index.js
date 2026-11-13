@@ -1117,7 +1117,13 @@ function createReviewStream(upstream, options = {}) {
 		let highest = first.index;
 		let finish = first.finish;
 		for (let tries = 0; !parsed.ok && tries < retry && attempt !== void 0; tries += 1) {
-			const next = yield* tee(await attempt());
+			let retryStream;
+			try {
+				retryStream = await attempt();
+			} catch {
+				break;
+			}
+			const next = yield* tee(retryStream);
 			if (next.finish === void 0) break;
 			const nextKind = next.finish.reason.kind;
 			if (nextKind === "error" || nextKind === "aborted") {

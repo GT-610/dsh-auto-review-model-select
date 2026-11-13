@@ -41,6 +41,7 @@ const en: Record<string, string> = {
   loading: 'Loading configuration…',
   unavailable: 'This entry has no editable configuration in this profile.',
   noCatalog: 'The model catalog is unavailable here, so these are free-text fields.',
+  reloadCatalog: 'Reload the model catalog',
   saveFailed: 'The Host did not accept that change.',
   writableHint: 'The current profile layer is read-only, so these values cannot be saved.',
   retryNone: 'No retry',
@@ -73,6 +74,7 @@ const zh: Record<string, string> = {
   loading: '正在读取配置…',
   unavailable: '当前 profile 没有这份插件的可编辑配置。',
   noCatalog: '这里拿不到模型目录，下面按文本填写。',
+  reloadCatalog: '重新读取模型目录',
   saveFailed: 'Host 没有接受这次修改。',
   writableHint: '当前 profile 层是只读的，这些值无法保存。',
   retryNone: '不重试',
@@ -198,6 +200,16 @@ const style: Record<string, CSSProperties> = {
   check: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' },
   error: { color: palette.error, margin: 0 },
   note: { color: palette.secondary, margin: 0 },
+  notice: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  link: {
+    font: 'inherit',
+    color: palette.label,
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    textDecoration: 'underline',
+  },
 };
 
 /** One labeled field row. */
@@ -228,6 +240,7 @@ function Panel({ view, t: injected, ctx, form }: PanelProps): ReactElement | nul
   const t = injected ?? ((key: string) => en[key] ?? key);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -261,7 +274,7 @@ function Panel({ view, t: injected, ctx, form }: PanelProps): ReactElement | nul
     return () => {
       alive = false;
     };
-  }, []);
+  }, [catalogAttempt]);
 
   if (view === 'summary') return null;
   if (form === undefined) return <p style={style.note}>{t('unavailable')}</p>;
@@ -273,15 +286,25 @@ function Panel({ view, t: injected, ctx, form }: PanelProps): ReactElement | nul
   const disabled = !writable || busy;
   const groups = catalog?.groups ?? [];
 
-  const commit = async (field: string, next: unknown): Promise<void> => {
-    if (form === undefined) return;
+  const retryCatalog = (): void => {
+    setCatalogError(null);
+    setCatalogAttempt((attempt) => attempt + 1);
+  };
+
+  const commit = async (field: string, next: unknown): Promise<boolean> => {
+    if (form === undefined) return false;
     setBusy(true);
     setFailure(null);
     try {
       const accepted = await form.set(field, next);
-      if (accepted !== true) setFailure(t('saveFailed'));
+      if (accepted !== true) {
+        setFailure(t('saveFailed'));
+        return false;
+      }
+      return true;
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -299,7 +322,14 @@ function Panel({ view, t: injected, ctx, form }: PanelProps): ReactElement | nul
       <h4 style={style.title}>{t('title')}</h4>
       <p style={style.intro}>{t('intro')}</p>
       {writable ? null : <p style={style.note}>{t('writableHint')}</p>}
-      {catalogError === null ? null : <p style={style.note}>{catalogError}</p>}
+      {catalogError === null ? null : (
+        <div style={style.notice}>
+          <p style={style.note}>{catalogError}</p>
+          <button type="button" style={style.link} onClick={retryCatalog}>
+            {t('reloadCatalog')}
+          </button>
+        </div>
+      )}
 
       <div style={style.group}>
         <h5 style={style.groupTitle}>{t('reviewer')}</h5>
@@ -319,7 +349,8 @@ function Panel({ view, t: injected, ctx, form }: PanelProps): ReactElement | nul
               aria-label={t('provider')}
               onChange={(event) => {
                 const next = event.target.value;
-                void commit('provider', next).then(() => {
+                void commit('provider', next).then((accepted) => {
+                  if (!accepted) return;
                   const nextGroup = groups.find((candidate) => candidate.id === next);
                   if (next !== '' && !(nextGroup?.models.some((candidate) => candidate.id === model) ?? false)) {
                     void commit('model', '');
@@ -497,7 +528,7 @@ function TextInput(props: {
 }
 
 /** Register the card when the plugin loads. */
-export const inject = ['slots', 'locale'] as const;
+export const inject = ['slots', 'locale', 'configForms', 'remote'] as const;
 
 /**
  * Install the settings card.

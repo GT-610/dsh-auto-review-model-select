@@ -346,7 +346,15 @@ export function createReviewStream(
     let finish = first.finish;
 
     for (let tries = 0; !parsed.ok && tries < retry && attempt !== undefined; tries += 1) {
-      const next = yield* tee(await attempt());
+      let retryStream: AsyncIterable<Chunk>;
+      try {
+        retryStream = await attempt();
+      } catch {
+        // A failed dispatch must not cost the fail-closed fallback: the gate
+        // would turn a thrown error into AUTO_REVIEW_FAILED.
+        break;
+      }
+      const next = yield* tee(retryStream);
       if (next.finish === undefined) break;
       const nextKind = next.finish.reason.kind;
       if (nextKind === 'error' || nextKind === 'aborted') {
