@@ -21,8 +21,11 @@ let react_jsx_runtime = require("react/jsx-runtime");
 *
 * @module dsh-auto-review-model-select/client
 */
+/**
+* Settings namespace, slot key and bundle name are one string: the patch row id
+* doubles as the namespace the form edits.
+*/
 const NS = "dsh-auto-review-model-select";
-const ENTRY_ID = "dsh-auto-review-model-select";
 /** Copy per built-in locale; untranslated locales fall back to English. */
 const en = {
 	title: "Auto review",
@@ -47,6 +50,8 @@ const en = {
 	unavailable: "This entry has no editable configuration in this profile.",
 	noCatalog: "The model catalog is unavailable here, so these are free-text fields.",
 	reloadCatalog: "Reload the model catalog",
+	enabled: "Enable this plugin",
+	enabledHint: "Turn it off to leave Auto review exactly as DSH ships it.",
 	saveFailed: "The Host did not accept that change.",
 	writableHint: "The current profile layer is read-only, so these values cannot be saved.",
 	retryNone: "No retry",
@@ -80,6 +85,8 @@ const DICTS = {
 		unavailable: "当前 profile 没有这份插件的可编辑配置。",
 		noCatalog: "这里拿不到模型目录，下面按文本填写。",
 		reloadCatalog: "重新读取模型目录",
+		enabled: "启用本插件",
+		enabledHint: "关闭后自动审查完全按 DSH 原始行为运行。",
 		saveFailed: "Host 没有接受这次修改。",
 		writableHint: "当前 profile 层是只读的，这些值无法保存。",
 		retryNone: "不重试",
@@ -217,11 +224,10 @@ function Row(props) {
 }
 /**
 * Render the settings card.
-* @param props - slot props plus the context and optional form handle.
-* @returns the card, or null in the summary view.
+* @param props - the translator, the context, and the optional form handle.
+* @returns the card.
 */
-function Panel({ view, t: injected, ctx, form }) {
-	const t = injected ?? ((key) => en[key] ?? key);
+function Panel({ t, ctx, form }) {
 	const [catalog, setCatalog] = (0, react.useState)(null);
 	const [catalogError, setCatalogError] = (0, react.useState)(null);
 	const [catalogAttempt, setCatalogAttempt] = (0, react.useState)(0);
@@ -248,7 +254,6 @@ function Panel({ view, t: injected, ctx, form }) {
 			alive = false;
 		};
 	}, [catalogAttempt]);
-	if (view === "summary") return null;
 	if (form === void 0) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 		style: style.note,
 		children: t("unavailable")
@@ -306,6 +311,19 @@ function Panel({ view, t: injected, ctx, form }) {
 			writable ? null : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
 				style: style.note,
 				children: t("writableHint")
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)(Row, {
+				label: t("enabled"),
+				hint: t("enabledHint"),
+				children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
+					style: style.check,
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+						type: "checkbox",
+						checked: value.enabled !== false,
+						disabled,
+						onChange: (event) => void commit("enabled", event.target.checked)
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("enabled") })]
+				})
 			}),
 			catalogError === null ? null : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				style: style.notice,
@@ -570,7 +588,7 @@ function apply(ctx) {
 		const get = service?.get;
 		if (typeof get !== "function") return void 0;
 		try {
-			cached = get.call(service, ENTRY_ID);
+			cached = get.call(service, NS);
 			return cached;
 		} catch {
 			return;
@@ -581,14 +599,13 @@ function apply(ctx) {
 		cached = void 0;
 	}, "auto-review-model-select: settings form");
 	const Card = (props) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Panel, {
-		view: props.view,
 		t: props.t ?? fallback,
 		ctx,
 		form: form()
 	});
 	ctx.slots.inject("plugins.bundle.config", () => ctx.slots.register({
 		name: "plugins.bundle.config",
-		key: ENTRY_ID,
+		key: NS,
 		locale: NS
 	}, Card));
 }

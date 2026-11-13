@@ -169,7 +169,15 @@ test('registers the card under the bundle name with its services', async () => {
 test('renders values from the configuration snapshot', async () => {
   const plugin = loadPlugin();
   const box = harness({
-    value: { provider: 'main-provider', model: 'main-model', repair: false, hint: true, retry: 2, fallback: 'fail' },
+    value: {
+      enabled: false,
+      provider: 'main-provider',
+      model: 'main-model',
+      repair: false,
+      hint: true,
+      retry: 2,
+      fallback: 'fail',
+    },
   });
   const tree = await mount(plugin, box);
 
@@ -178,8 +186,9 @@ test('renders values from the configuration snapshot', async () => {
   assert.equal(provider.props.value, 'main-provider');
   assert.equal(model.props.value, 'main-model');
   const checkboxes = inputsOfType(tree, 'checkbox');
-  assert.equal(checkboxes[0].props.checked, false, 'repair is off');
-  assert.equal(checkboxes[1].props.checked, true, 'hint is on');
+  assert.equal(checkboxes[0].props.checked, false, 'the plugin is switched off');
+  assert.equal(checkboxes[1].props.checked, false, 'repair is off');
+  assert.equal(checkboxes[2].props.checked, true, 'hint is on');
   assert.equal(selectByLabel(tree, 't:retry').props.value, '2');
   assert.equal(selectByLabel(tree, 't:fallback').props.value, 'fail');
 });
@@ -225,7 +234,7 @@ test('saves a field through the form and surfaces a refusal', async () => {
 
   const checkboxes = inputsOfType(tree, 'checkbox');
   await act(async () => {
-    checkboxes[0].props.onChange({ target: { checked: false } });
+    checkboxes[1].props.onChange({ target: { checked: false } });
   });
 
   assert.deepEqual(box.sets, [['repair', false]]);

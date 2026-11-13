@@ -1288,7 +1288,7 @@ const Config = Schema.object({
 	reasoningEffort: Schema.string().default("").volatile(),
 	hint: Schema.boolean().default(true).volatile(),
 	repair: Schema.boolean().default(true).volatile(),
-	retry: Schema.number().default(1).volatile(),
+	retry: Schema.number().min(0).max(2).default(1).volatile(),
 	fallback: Schema.string().default("deny").volatile()
 });
 export { Config, apply, inject, name };

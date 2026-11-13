@@ -2,6 +2,7 @@
   "name": "dsh-auto-review-model-select",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Route DeepSeek Harness Auto review to a chosen model and normalize its decision output.",
   "icon": "./icon.svg",

@@ -15,20 +15,13 @@ import { defineConfig } from 'tsdown';
 /** Package name, which is also the loader id the client bundle registers. */
 const CLIENT_ID = 'dsh-auto-review-model-select';
 
-/** Modules the web shell seeds into the frozen module table before any plugin runs. */
-const PLATFORM_MODULES = [
-  'react',
-  'react/jsx-runtime',
-  'react-dom',
-  'react-dom/client',
-  '@deepseek-ai/cordis',
-  'zod',
-  '@tanstack/react-virtual',
-  '@deepseek-ai/dsh-client-store',
-  '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-dockkit',
-];
+/**
+ * Modules the web shell seeds into the frozen module table before any plugin
+ * runs. Keep this to what the Client half actually imports: an entry listed
+ * here but never required changes nothing, and the Client test fails on any
+ * other require.
+ */
+const PLATFORM_MODULES = ['react', 'react/jsx-runtime'];
 
 export default defineConfig([
   {

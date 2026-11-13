@@ -134,7 +134,7 @@ function tryParse(text: string): unknown {
  * @param text - arbitrary model output.
  * @returns each syntactically valid value, in order of appearance.
  */
-export function jsonCandidates(text: string): unknown[] {
+function jsonCandidates(text: string): unknown[] {
   const source = String(text);
   const found: unknown[] = [];
   for (let start = 0; start < source.length; start += 1) {
