@@ -356,13 +356,16 @@ export function createReviewStream(
           break;
         }
         const next = yield* tee(retryStream);
+        // Track indices before the finish check: tee already forwarded this
+        // stream's reasoning blocks, so the fallback text must clear them even
+        // when the stream ends without a finish.
+        highest = Math.max(highest, next.index);
         if (next.finish === undefined) break;
         const nextKind = next.finish.reason.kind;
         if (nextKind === 'error' || nextKind === 'aborted') {
           yield next.finish;
           return;
         }
-        highest = Math.max(highest, next.index);
         finish = next.finish;
         source = next.text.trim() === '' ? next.toolArguments : next.text;
         parsed = parseDecisionLoose(source);

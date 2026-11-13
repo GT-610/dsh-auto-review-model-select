@@ -1124,13 +1124,13 @@ function createReviewStream(upstream, options = {}) {
 				break;
 			}
 			const next = yield* tee(retryStream);
+			highest = Math.max(highest, next.index);
 			if (next.finish === void 0) break;
 			const nextKind = next.finish.reason.kind;
 			if (nextKind === "error" || nextKind === "aborted") {
 				yield next.finish;
 				return;
 			}
-			highest = Math.max(highest, next.index);
 			finish = next.finish;
 			source = next.text.trim() === "" ? next.toolArguments : next.text;
 			parsed = parseDecisionLoose(source);

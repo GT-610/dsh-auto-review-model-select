@@ -229,6 +229,31 @@ test('falls back when the retry dispatch throws', async () => {
   assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
 });
 
+test('keeps the fallback text clear of a retry stream that never finishes', async () => {
+  const stream = createReviewStream(
+    chunks([{ type: 'text-delta', index: 0, text: 'no decision' }, { type: 'finish', reason: { kind: 'stop' } }]),
+    {
+      retry: 1,
+      fallback: 'deny',
+      attempt: async () =>
+        chunks([
+          { type: 'block-start', index: 1, blockType: 'reasoning' },
+          { type: 'reasoning-delta', index: 1, text: 'thinking' },
+        ]),
+    },
+  );
+  const output = await drain(stream);
+
+  const blocks = output.filter((chunk) => chunk.type === 'block-start');
+  assert.deepEqual(
+    blocks.map((chunk) => [chunk.blockType, chunk.index]),
+    [['reasoning', 1]],
+  );
+  const text = output.find((chunk) => chunk.type === 'text-delta');
+  assert.equal(text.index, 2, 'the fallback text must not share the reasoning index');
+  assert.equal(JSON.parse(text.text).decision, 'deny');
+});
+
 test('throws when the upstream never settles', async () => {
   await assert.rejects(
     drain(createReviewStream(chunks([{ type: 'text-delta', index: 0, text: 'x' }]))),
