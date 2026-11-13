@@ -5,7 +5,6 @@ import {
   canonicalize,
   createReviewStream,
   fallbackDecision,
-  jsonCandidates,
   parseDecisionLoose,
 } from '../src/repair.ts';
 
@@ -38,6 +37,11 @@ test('reads through Markdown fences and prose', () => {
     ok: true,
     decision: { risk: 'medium', decision: 'allow' },
   });
+});
+
+test('scans a reason that holds braces and quotes', () => {
+  const reply = '{"risk":"low","decision":"deny","reason":"a } brace and a \\"quoted\\" word"}';
+  assert.equal(parseDecisionLoose(reply).decision.reason, 'a } brace and a "quoted" word');
 });
 
 test('takes the last usable object when the model restates itself', () => {
@@ -90,12 +94,6 @@ test('rejects an object without a legal enum pair', () => {
 test('finds objects embedded after a JSON array wrapper', () => {
   const result = parseDecisionLoose('[{"risk":"low","decision":"allow"}]');
   assert.deepEqual(result.decision, { risk: 'low', decision: 'allow' });
-});
-
-test('jsonCandidates tolerates braces inside strings', () => {
-  const found = jsonCandidates('{"risk":"low","decision":"deny","reason":"a } brace"}');
-  assert.equal(found.length, 1);
-  assert.equal(found[0].reason, 'a } brace');
 });
 
 test('the fallback is a legal fail-closed decision', () => {

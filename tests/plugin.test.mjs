@@ -152,3 +152,81 @@ test('retries an unreadable reply with one correction message', async () => {
   assert.match(seen[1].messages.at(-1).content[0].text, /FORMAT CORRECTION/);
   assert.equal(JSON.parse(output.find((chunk) => chunk.type === 'text-delta').text).decision, 'deny');
 });
+
+test('leaves the request alone when the plugin is disabled', async () => {
+  const seen = [];
+  const { ctx, dispatch } = harness((options) => {
+    seen.push(options);
+    return (async function* raw() {
+      for (const chunk of attempt('{"risk":"low","decision":"allow"}')) yield chunk;
+    })();
+  });
+  apply(ctx, { enabled: false, provider: 'cheap-provider', model: 'small-model', repair: false });
+  const output = await drain(dispatch(reviewRequest()));
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].provider, 'main-provider');
+  assert.equal(seen[0].system, 'REVIEW_POLICY');
+  assert.equal(output[0].text, '{"risk":"low","decision":"allow"}');
+});
+
+test('keeps the request object when the hint is off and no route is set', async () => {
+  const seen = [];
+  const { ctx, dispatch } = harness((options) => {
+    seen.push(options);
+    return (async function* raw() {
+      for (const chunk of attempt('{"risk":"low","decision":"allow"}')) yield chunk;
+    })();
+  });
+  apply(ctx, { hint: false, repair: false });
+  const request = reviewRequest();
+  await drain(dispatch(request));
+
+  assert.equal(seen[0], request, 'an untouched request must not be copied');
+  assert.equal(seen[0].system, 'REVIEW_POLICY');
+});
+
+test('reads a volatile configuration handle on every review', async () => {
+  const seen = [];
+  const { ctx, dispatch } = harness((options) => {
+    seen.push(options);
+    return (async function* raw() {
+      yield { type: 'text-delta', index: 0, text: '{"risk":"low","decision":"allow"}' };
+      yield { type: 'finish', reason: { kind: 'stop' } };
+    })();
+  });
+  let effort = 'low';
+  apply(ctx, {
+    provider: { get: () => 'cheap-provider' },
+    model: { get: () => 'small-model' },
+    reasoningEffort: { get: () => effort },
+    hint: false,
+  });
+
+  await drain(dispatch(reviewRequest()));
+  effort = 'high';
+  await drain(dispatch(reviewRequest()));
+
+  assert.deepEqual(
+    seen.map((options) => [options.provider, options.model, options.reasoningEffort]),
+    [
+      ['cheap-provider', 'small-model', 'low'],
+      ['cheap-provider', 'small-model', 'high'],
+    ],
+  );
+});
+
+test('follows the main model when only one side of the route is set', async () => {
+  const seen = [];
+  const { ctx, dispatch } = harness((options) => {
+    seen.push(options);
+    return (async function* raw() {
+      for (const chunk of attempt('{"risk":"low","decision":"allow"}')) yield chunk;
+    })();
+  });
+  apply(ctx, { provider: 'cheap-provider', hint: false });
+  await drain(dispatch(reviewRequest()));
+
+  assert.equal(seen[0].provider, 'main-provider');
+  assert.equal(seen[0].model, 'main-model');
+});
