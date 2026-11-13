@@ -10,9 +10,9 @@ import {
 
 /** Collect every chunk one review stream emits. */
 async function drain(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return chunks;
+  const collected = [];
+  for await (const chunk of stream) collected.push(chunk);
+  return collected;
 }
 
 /** Turn a list of chunks into an async iterable, like an adapter stream. */

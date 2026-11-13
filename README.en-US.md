@@ -66,7 +66,7 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 
 ```sh
 pnpm install
-pnpm check   # typecheck + build + unit tests
+pnpm check   # typecheck + lint + build + unit tests
 pnpm test    # rebuild the client artifact, then run the tests
 ```
 

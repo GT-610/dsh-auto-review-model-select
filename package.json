@@ -2,6 +2,7 @@
   "name": "dsh-auto-review-model-select",
   "version": "0.2.0",
   "private": true,
+  "packageManager": "pnpm@12.3.4",
   "license": "MIT",
   "type": "module",
   "description": "Route DeepSeek Harness Auto review to a chosen model and normalize its decision output.",
@@ -29,8 +30,9 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
     "test": "tsdown && node --test \"tests/*.test.mjs\"",
-    "check": "tsc --noEmit && tsdown && node --test \"tests/*.test.mjs\""
+    "check": "tsc --noEmit && oxlint && tsdown && node --test \"tests/*.test.mjs\""
   },
   "dsh": {
     "bundle": {
@@ -50,6 +52,7 @@
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "^22.15.0",
     "@types/react": "~18.3.1",
+    "oxlint": "^1.93.0",
     "react": "^18.3.1",
     "react-test-renderer": "18.3.1",
     "tsdown": "^0.22.2",

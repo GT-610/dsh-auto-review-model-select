@@ -66,7 +66,7 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 
 ```sh
 pnpm install
-pnpm check   # 类型检查 + 构建 + 单元测试
+pnpm check   # 类型检查 + 代码检查 + 构建 + 单元测试
 pnpm test    # 重新构建客户端产物并跑测试
 ```
 

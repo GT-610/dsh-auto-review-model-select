@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input on purpose: the action reads `packageManager` from
+      # package.json, which pins pnpm exactly. The committed sourcemaps embed
+      # pnpm's virtual-store layout, so a different pnpm would make the
+      # artifact check below fail for reasons unrelated to the source.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The floor `engines.node` names, so a regression below it fails here.
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      # DSH installs the committed `dist/`, so a fresh build must not change it.
+      # `-N` records a file the build newly emits (which a plain worktree diff
+      # would leave invisible), and the diff is against HEAD so a removed
+      # artifact still counts.
+      - name: Committed artifacts are current
+        run: |
+          git add -N dist
+          git diff --exit-code HEAD -- dist

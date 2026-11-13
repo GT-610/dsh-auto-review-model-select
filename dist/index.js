@@ -1116,7 +1116,7 @@ function createReviewStream(upstream, options = {}) {
 		let parsed = parseDecisionLoose(source);
 		let highest = first.index;
 		let finish = first.finish;
-		for (let tries = 0; !parsed.ok && tries < retry && attempt !== void 0; tries += 1) {
+		if (attempt !== void 0) for (let tries = 0; !parsed.ok && tries < retry; tries += 1) {
 			let retryStream;
 			try {
 				retryStream = await attempt();
