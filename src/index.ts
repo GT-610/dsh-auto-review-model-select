@@ -193,6 +193,6 @@ export const Config = z.object({
   reasoningEffort: z.string().default('').volatile(),
   hint: z.boolean().default(true).volatile(),
   repair: z.boolean().default(true).volatile(),
-  retry: z.number().min(0).max(2).default(1).volatile(),
+  retry: z.number().default(1).volatile(),
   fallback: z.string().default('deny').volatile(),
 });
