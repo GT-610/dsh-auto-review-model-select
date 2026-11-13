@@ -134,7 +134,7 @@ function tryParse(text: string): unknown {
  * @param text - arbitrary model output.
  * @returns each syntactically valid value, in order of appearance.
  */
-export function jsonCandidates(text: string): unknown[] {
+function jsonCandidates(text: string): unknown[] {
   const source = String(text);
   const found: unknown[] = [];
   for (let start = 0; start < source.length; start += 1) {
@@ -345,18 +345,31 @@ export function createReviewStream(
     let highest = first.index;
     let finish = first.finish;
 
-    for (let tries = 0; !parsed.ok && tries < retry && attempt !== undefined; tries += 1) {
-      const next = yield* tee(await attempt());
-      if (next.finish === undefined) break;
-      const nextKind = next.finish.reason.kind;
-      if (nextKind === 'error' || nextKind === 'aborted') {
-        yield next.finish;
-        return;
+    if (attempt !== undefined) {
+      for (let tries = 0; !parsed.ok && tries < retry; tries += 1) {
+        let retryStream: AsyncIterable<Chunk>;
+        try {
+          retryStream = await attempt();
+        } catch {
+          // A failed dispatch must not cost the fail-closed fallback: the gate
+          // would turn a thrown error into AUTO_REVIEW_FAILED.
+          break;
+        }
+        const next = yield* tee(retryStream);
+        // Track indices before the finish check: tee already forwarded this
+        // stream's reasoning blocks, so the fallback text must clear them even
+        // when the stream ends without a finish.
+        highest = Math.max(highest, next.index);
+        if (next.finish === undefined) break;
+        const nextKind = next.finish.reason.kind;
+        if (nextKind === 'error' || nextKind === 'aborted') {
+          yield next.finish;
+          return;
+        }
+        finish = next.finish;
+        source = next.text.trim() === '' ? next.toolArguments : next.text;
+        parsed = parseDecisionLoose(source);
       }
-      highest = Math.max(highest, next.index);
-      finish = next.finish;
-      source = next.text.trim() === '' ? next.toolArguments : next.text;
-      parsed = parseDecisionLoose(source);
     }
 
     if (!parsed.ok) {

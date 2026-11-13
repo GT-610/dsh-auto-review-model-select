@@ -5,15 +5,14 @@ import {
   canonicalize,
   createReviewStream,
   fallbackDecision,
-  jsonCandidates,
   parseDecisionLoose,
 } from '../src/repair.ts';
 
 /** Collect every chunk one review stream emits. */
 async function drain(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return chunks;
+  const collected = [];
+  for await (const chunk of stream) collected.push(chunk);
+  return collected;
 }
 
 /** Turn a list of chunks into an async iterable, like an adapter stream. */
@@ -38,6 +37,11 @@ test('reads through Markdown fences and prose', () => {
     ok: true,
     decision: { risk: 'medium', decision: 'allow' },
   });
+});
+
+test('scans a reason that holds braces and quotes', () => {
+  const reply = '{"risk":"low","decision":"deny","reason":"a } brace and a \\"quoted\\" word"}';
+  assert.equal(parseDecisionLoose(reply).decision.reason, 'a } brace and a "quoted" word');
 });
 
 test('takes the last usable object when the model restates itself', () => {
@@ -90,12 +94,6 @@ test('rejects an object without a legal enum pair', () => {
 test('finds objects embedded after a JSON array wrapper', () => {
   const result = parseDecisionLoose('[{"risk":"low","decision":"allow"}]');
   assert.deepEqual(result.decision, { risk: 'low', decision: 'allow' });
-});
-
-test('jsonCandidates tolerates braces inside strings', () => {
-  const found = jsonCandidates('{"risk":"low","decision":"deny","reason":"a } brace"}');
-  assert.equal(found.length, 1);
-  assert.equal(found[0].reason, 'a } brace');
 });
 
 test('the fallback is a legal fail-closed decision', () => {
@@ -211,6 +209,49 @@ test('retries once with a correction and uses the second reply', async () => {
     decision: 'deny',
     reason: 'secrets',
   });
+});
+
+test('falls back when the retry dispatch throws', async () => {
+  const stream = createReviewStream(
+    chunks([{ type: 'text-delta', index: 0, text: 'no decision' }, { type: 'finish', reason: { kind: 'stop' } }]),
+    {
+      retry: 1,
+      attempt: async () => {
+        throw new Error('provider unavailable');
+      },
+      fallback: 'deny',
+    },
+  );
+  const output = await drain(stream);
+  const decision = JSON.parse(textOf(output));
+  assert.equal(decision.risk, 'medium');
+  assert.equal(decision.decision, 'deny');
+  assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
+});
+
+test('keeps the fallback text clear of a retry stream that never finishes', async () => {
+  const stream = createReviewStream(
+    chunks([{ type: 'text-delta', index: 0, text: 'no decision' }, { type: 'finish', reason: { kind: 'stop' } }]),
+    {
+      retry: 1,
+      fallback: 'deny',
+      attempt: async () =>
+        chunks([
+          { type: 'block-start', index: 1, blockType: 'reasoning' },
+          { type: 'reasoning-delta', index: 1, text: 'thinking' },
+        ]),
+    },
+  );
+  const output = await drain(stream);
+
+  const blocks = output.filter((chunk) => chunk.type === 'block-start');
+  assert.deepEqual(
+    blocks.map((chunk) => [chunk.blockType, chunk.index]),
+    [['reasoning', 1]],
+  );
+  const text = output.find((chunk) => chunk.type === 'text-delta');
+  assert.equal(text.index, 2, 'the fallback text must not share the reasoning index');
+  assert.equal(JSON.parse(text.text).decision, 'deny');
 });
 
 test('throws when the upstream never settles', async () => {

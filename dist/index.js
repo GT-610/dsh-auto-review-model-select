@@ -1116,15 +1116,21 @@ function createReviewStream(upstream, options = {}) {
 		let parsed = parseDecisionLoose(source);
 		let highest = first.index;
 		let finish = first.finish;
-		for (let tries = 0; !parsed.ok && tries < retry && attempt !== void 0; tries += 1) {
-			const next = yield* tee(await attempt());
+		if (attempt !== void 0) for (let tries = 0; !parsed.ok && tries < retry; tries += 1) {
+			let retryStream;
+			try {
+				retryStream = await attempt();
+			} catch {
+				break;
+			}
+			const next = yield* tee(retryStream);
+			highest = Math.max(highest, next.index);
 			if (next.finish === void 0) break;
 			const nextKind = next.finish.reason.kind;
 			if (nextKind === "error" || nextKind === "aborted") {
 				yield next.finish;
 				return;
 			}
-			highest = Math.max(highest, next.index);
 			finish = next.finish;
 			source = next.text.trim() === "" ? next.toolArguments : next.text;
 			parsed = parseDecisionLoose(source);

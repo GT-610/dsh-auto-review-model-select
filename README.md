@@ -43,6 +43,8 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 | `retry` | `1` | 完全读不出裁决时重问几次（0–2） |
 | `fallback` | `"deny"` | 仍读不出时：`deny` 转人工审批，`fail` 让调用失败 |
 
+`provider` 和 `model` 要一起填写：只填其中一个时按「跟随主模型」处理，不会只换一半。
+
 也可以直接写在 `cordis.patch.yml` 的插件行里；设置页改的是同一份配置（字段是 volatile 的，改完下一次审查即生效，不重启插件）。
 
 ## 原理
@@ -50,7 +52,7 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 - 监听 `llm/stream` waterfall，只处理 `purpose === 'auto-review'` 的请求。
 - waterfall 不能原地改请求（gate 传进来的 options 是 deep-frozen 的），所以复制一份重新 `ctx.llm.stream()`；用 `WeakSet` 标记自己派发的请求，避免递归。
 - 输出侧缓冲文本与 tool-call 参数、原样转发 reasoning/usage、丢弃 text 与 tool 块，最后合成「1 个 text 块 + `stop`」。用的是 gate 自己那套 `BlockAssembler` 能接受的形状。
-- 解析顺序：整段 `JSON.parse` → 剥代码围栏 → 扫描平衡括号里的对象 → 取最后一个合法形状。
+- 解析顺序：先整段 `JSON.parse`；失败则扫描文本里平衡的 `{}`/`[]`（代码围栏、夹叙、数组包装都在这一步被顺带容忍），取最后一个合法形状。
 - 归一化：`allow` 一律去掉 `reason`；`low + deny` 变 `medium + deny`（保留拒绝）；`high + allow` 变 `high + deny`（fail-closed）。
 
 ## 已知限制
@@ -58,12 +60,14 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 - 只改审查请求，不影响主模型，也不改变 Auto 模式本身的沙箱与审批语义。
 - 换到另一个 provider 会丢掉审查请求的前缀缓存，长会话下审查成本会上升。
 - `run_code` 程序内部的直接 Node 副作用本来就不在 Auto review 范围内，本插件也不覆盖。
+- `retry` 每次最多追加 2 次审查请求，长会话下会放大审查成本。
 
 ## 开发
 
 ```sh
 pnpm install
-pnpm check   # 类型检查 + 构建 + 27 个单元测试
+pnpm check   # 类型检查 + 代码检查 + 构建 + 单元测试
+pnpm test    # 重新构建客户端产物并跑测试
 ```
 
 ## 许可
