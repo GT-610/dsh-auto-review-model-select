@@ -43,6 +43,8 @@ Settings live at **Settings → Plugins → Auto review model → Configuration*
 | `retry` | `1` | Extra attempts when nothing readable comes back (0–2) |
 | `fallback` | `"deny"` | Still unreadable: `deny` asks the user, `fail` lets the call fail |
 
+`provider` and `model` must be set together: setting only one follows the main model rather than switching half the route.
+
 The same fields can be set on the plugin row in `cordis.patch.yml`; the settings card edits that same configuration. Fields are volatile, so a change applies to the next reviewed call without restarting the plugin.
 
 ## How it works
@@ -50,7 +52,7 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 - Listens on the `llm/stream` waterfall and only handles `purpose === 'auto-review'`.
 - The waterfall cannot mutate a request in place (the gate hands in deep-frozen options), so the plugin copies the options and calls `ctx.llm.stream()` again. A `WeakSet` marks its own dispatches so the listener lets them through.
 - On the output side it buffers text and tool-call arguments, forwards reasoning and usage, drops text and tool blocks, and emits one text block plus a synthetic `stop` — the shape the gate's own `BlockAssembler` accepts.
-- Parsing order: whole-text `JSON.parse`, then fence stripping, then a balanced-brace scan that keeps the last legal shape.
+- Parsing order: whole-text `JSON.parse` first; if that fails, scan the balanced `{}`/`[]` runs in the text (which tolerates code fences, prose, and array wrappers along the way) and keep the last legal shape.
 - Normalization: `allow` never keeps a `reason`; `low + deny` becomes `medium + deny` (the denial survives); `high + allow` becomes `high + deny` (fail-closed).
 
 ## Limitations
@@ -58,12 +60,14 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 - Changes only the review request. The main model, the Auto sandbox, and the approval semantics are untouched.
 - Switching to another provider loses the review request's prompt-cache prefix, so long sessions cost more.
 - Direct Node side effects inside `run_code` programs were never covered by Auto review, and are not covered here either.
+- `retry` adds at most two more reviewer requests per reviewed call, so long sessions cost more.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm check   # typecheck + build + 27 unit tests
+pnpm check   # typecheck + build + unit tests
+pnpm test    # rebuild the client artifact, then run the tests
 ```
 
 ## License
