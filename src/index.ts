@@ -13,7 +13,8 @@
  * - it normalizes the reply stream with {@link createReviewStream}, so prose,
  *   Markdown fences, `allow` with a `reason`, `low + deny`, and a truncated
  *   finish no longer become `AUTO_REVIEW_FAILED`, and an unreadable reply
- *   degrades to an approval prompt instead of a hard failure.
+ *   degrades to an approval prompt instead of a hard failure. A reviewer that
+ *   never answered — a quota, a dropped connection — settles the same way.
  *
  * Every knob is optional; with no configuration the plugin only repairs output
  * and keeps the main model as the reviewer.

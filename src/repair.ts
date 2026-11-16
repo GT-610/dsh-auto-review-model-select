@@ -12,7 +12,10 @@
  * This module normalizes such a stream instead of trusting the prompt: it
  * buffers whatever the model produced, extracts the decision object, coerces
  * it into one of the six legal shapes, and emits exactly one text block plus a
- * synthetic `stop`. Nothing here knows about Cordis, so it is unit-testable.
+ * synthetic `stop`. A request that never reached the model — a quota, a dropped
+ * connection — settles the same way, because an unreachable reviewer is a
+ * reason to ask a human, not a reason to block every tool call. Nothing here
+ * knows about Cordis, so it is unit-testable.
  *
  * @module dsh-auto-review-model-select/repair
  */
@@ -248,6 +251,35 @@ export function fallbackDecision(detail: string): Decision {
   };
 }
 
+/** Longest provider message carried into a fallback reason. */
+const FAILURE_DETAIL_MAX = 200;
+
+/**
+ * Describe one provider failure for the fallback reason.
+ *
+ * The gate keeps the original failure to itself: it logs the message and turns
+ * the call into `AUTO_REVIEW_FAILED`. Once that failure becomes an approval
+ * prompt instead, this is the only place the reason the reviewer never answered
+ * survives, so a quota or a dropped connection is named rather than guessed at.
+ *
+ * @param finish - the terminal chunk carrying the failure.
+ * @returns a short description, capped so the prompt stays readable.
+ */
+function failureDetail(finish: FinishChunk): string {
+  const failure = finish.reason.failure;
+  if (failure === null || typeof failure !== 'object') return 'the reviewer request failed';
+  const { code, message } = failure as { code?: unknown; message?: unknown };
+  const parts = [code, message]
+    .filter((part): part is string => typeof part === 'string')
+    // The reason is rendered as one line in the approval prompt, so a provider
+    // message carrying a stack or a wrapped body must not break it open.
+    .map(part => part.replace(/\s+/g, ' ').trim())
+    .filter(part => part !== '');
+  if (parts.length === 0) return 'the reviewer request failed';
+  const detail = `the reviewer request failed: ${parts.join(': ')}`;
+  return detail.length <= FAILURE_DETAIL_MAX ? detail : `${detail.slice(0, FAILURE_DETAIL_MAX - 1)}…`;
+}
+
 /**
  * Drain one reviewer stream, forwarding reasoning and usage while buffering the
  * parts the protocol rejects.
@@ -303,7 +335,10 @@ async function* tee(stream: AsyncIterable<Chunk>): AsyncGenerator<Chunk, ReviewA
 export interface RepairOptions {
   /** Extra attempts after an unusable reply. */
   retry?: number;
-  /** `deny` degrades to a human decision; `fail` keeps the protocol failure. */
+  /**
+   * `deny` degrades both an unreadable reply and an unavailable reviewer to a
+   * human decision; `fail` keeps the original failure.
+   */
   fallback?: 'deny' | 'fail';
   /** Starts one more attempt; called only while a retry remains. */
   attempt?: () => Promise<AsyncIterable<Chunk>>;
@@ -312,8 +347,14 @@ export interface RepairOptions {
 /**
  * Wrap one reviewer stream in the repair protocol.
  *
- * Error and abort finishes pass through untouched (a provider failure must keep
- * its own message). Every other finish is re-read: the decision is recovered,
+ * An `aborted` finish passes through untouched: it is the caller's own
+ * cancellation, and answering it with an approval prompt would arrive after the
+ * turn was already dropped.
+ *
+ * Every other finish yields a decision. An `error` finish is a provider failure
+ * rather than a protocol failure — there is no reply to read and no format to
+ * correct — so it spends no retry and settles through the same `fallback` as an
+ * unreadable reply. Anything else is re-read: the decision is recovered,
  * optionally retried with a correction message, and emitted as one text block
  * followed by `stop`.
  *
@@ -329,14 +370,45 @@ export function createReviewStream(
   const fallback = options.fallback === 'fail' ? 'fail' : 'deny';
   const attempt = typeof options.attempt === 'function' ? options.attempt : undefined;
 
+  /**
+   * End the stream the way the protocol requires: one text block holding the
+   * decision, then a synthetic `stop`. `index` is the highest block index
+   * already forwarded, so the text block never reuses a reasoning block's index.
+   * @param decision - the decision to emit.
+   * @param index - highest index already yielded, or -1 when nothing was.
+   * @returns the two terminal chunks.
+   */
+  function* settle(decision: Decision, index: number): Generator<Chunk> {
+    yield { type: 'text-delta', index: index + 1, text: JSON.stringify(decision) };
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  }
+
   return (async function* normalize(): AsyncGenerator<Chunk> {
     const first = yield* tee(upstream);
     if (first.finish === undefined) {
       throw new Error('auto-review: the reviewer stream ended without a finish chunk');
     }
     const kind = first.finish.reason.kind;
-    if (kind === 'error' || kind === 'aborted') {
+
+    // An abort is the caller's own cancellation, so it keeps propagating: the
+    // turn was just dropped, and an approval prompt for it would arrive with
+    // nothing left to approve.
+    if (kind === 'aborted') {
       yield first.finish;
+      return;
+    }
+
+    // A provider failure is not a protocol failure. There is no reply to read
+    // and no format to correct, so `attempt` — which sends a format correction —
+    // is not spent on one. Left as a hard failure, a quota or a dropped
+    // connection blocks every tool call until the provider recovers, so it
+    // settles through the same `fallback` as an unreadable reply.
+    if (kind === 'error') {
+      if (fallback === 'fail') {
+        yield first.finish;
+        return;
+      }
+      yield* settle(fallbackDecision(failureDetail(first.finish)), first.index);
       return;
     }
 
@@ -362,8 +434,16 @@ export function createReviewStream(
         highest = Math.max(highest, next.index);
         if (next.finish === undefined) break;
         const nextKind = next.finish.reason.kind;
-        if (nextKind === 'error' || nextKind === 'aborted') {
+        if (nextKind === 'aborted') {
           yield next.finish;
+          return;
+        }
+        if (nextKind === 'error') {
+          if (fallback === 'fail') {
+            yield next.finish;
+            return;
+          }
+          yield* settle(fallbackDecision(failureDetail(next.finish)), highest);
           return;
         }
         finish = next.finish;
@@ -380,7 +460,6 @@ export function createReviewStream(
       parsed = { ok: true, decision: fallbackDecision(parsed.detail) };
     }
 
-    yield { type: 'text-delta', index: highest + 1, text: JSON.stringify(parsed.decision) };
-    yield { type: 'finish', reason: { kind: 'stop' } };
+    yield* settle(parsed.decision, highest);
   })();
 }

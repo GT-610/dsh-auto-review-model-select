@@ -18,7 +18,7 @@ DSH 的 Auto review 是**逐调用**的模型授权门：每次工具调用执�
 1. **换审查模型**：把 `auto-review` 请求重新派发到你指定的 provider/model（留空则跟随主模型）。
 2. **格式提醒**：在 reviewer 的 system prompt 末尾再强调一次 JSON 协议。
 3. **修复输出**：在流层面把回复归一化——容忍夹叙、代码围栏、多余 `reason`、`low + deny`、`high + allow`、`max-tokens` 截断、甚至被写成 tool call 的裁决。
-4. **失败兜底**：确实读不出裁决时，默认降级为 `medium + deny`，在 `ask` 审批策略下变成一次普通审批弹窗，而不是让工具调用直接失败。
+4. **失败兜底**：确实读不出裁决、或审查请求本身就没成功（限流、连接中断）时，默认降级为 `medium + deny`，在 `ask` 审批策略下变成一次普通审批弹窗，而不是让工具调用直接失败。审查器不可用只影响这一次裁决，不会把整轮工具调用全部拦下。
 
 ## 安装
 
@@ -73,7 +73,7 @@ New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.dsh\profiles\<profile>\
 | `hint` | `true` | 是否追加格式提醒 |
 | `repair` | `true` | 是否归一化裁决输出 |
 | `retry` | `1` | 完全读不出裁决时重问几次（0–2） |
-| `fallback` | `"deny"` | 仍读不出时：`deny` 转人工审批，`fail` 让调用失败 |
+| `fallback` | `"deny"` | 读不出裁决或审查请求失败时：`deny` 转人工审批，`fail` 让调用失败 |
 
 `provider` 和 `model` 要一起填写：只填其中一个时按「跟随主模型」处理，不会只换一半。
 
@@ -86,6 +86,7 @@ New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.dsh\profiles\<profile>\
 - 输出侧缓冲文本与 tool-call 参数、原样转发 reasoning/usage、丢弃 text 与 tool 块，最后合成「1 个 text 块 + `stop`」。用的是 gate 自己那套 `BlockAssembler` 能接受的形状。
 - 解析顺序：先整段 `JSON.parse`；失败则扫描文本里平衡的 `{}`/`[]`（代码围栏、夹叙、数组包装都在这一步被顺带容忍），取最后一个合法形状。
 - 归一化：`allow` 一律去掉 `reason`；`low + deny` 变 `medium + deny`（保留拒绝）；`high + allow` 变 `high + deny`（fail-closed）。
+- 错误处理：provider 报错（限流、连接中断）不是协议问题——没有回复可读，也没有格式可纠，所以不消耗重试，直接走 `fallback`；失败原因会写进审批弹窗。`aborted` 原样透传，因为那是调用方自己取消的，不该在取消之后弹出一个审批框。
 
 ## 已知限制
 

@@ -155,14 +155,101 @@ test('reads a tool-call shaped review', async () => {
   assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
 });
 
-test('leaves provider errors untouched', async () => {
+test('keeps a provider error when fallback is fail', async () => {
   const failure = { code: 'RATE_LIMITED', message: 'slow down' };
   const upstream = chunks([
     { type: 'text-delta', index: 0, text: 'partial' },
     { type: 'finish', reason: { kind: 'error', failure } },
   ]);
-  const output = await drain(createReviewStream(upstream));
+  const output = await drain(createReviewStream(upstream, { fallback: 'fail' }));
   assert.deepEqual(output, [{ type: 'finish', reason: { kind: 'error', failure } }]);
+});
+
+test('degrades an unavailable reviewer to a denial that can be approved', async () => {
+  const upstream = chunks([
+    { type: 'text-delta', index: 0, text: 'partial' },
+    {
+      type: 'finish',
+      reason: { kind: 'error', failure: { code: 'QUOTA', message: 'rate limited until tomorrow' } },
+    },
+  ]);
+  const output = await drain(createReviewStream(upstream, { fallback: 'deny' }));
+  const decision = JSON.parse(textOf(output));
+  assert.equal(decision.risk, 'medium');
+  assert.equal(decision.decision, 'deny');
+  assert.match(decision.reason, /QUOTA/, 'the prompt names why the reviewer never answered');
+  assert.match(decision.reason, /rate limited until tomorrow/);
+  assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
+});
+
+test('names a provider failure that carries no code or message', async () => {
+  const upstream = chunks([{ type: 'finish', reason: { kind: 'error' } }]);
+  const output = await drain(createReviewStream(upstream, { fallback: 'deny' }));
+  assert.equal(JSON.parse(textOf(output)).decision, 'deny');
+  assert.match(JSON.parse(textOf(output)).reason, /the reviewer request failed/);
+});
+
+test('keeps a multi-line provider message on one line and capped', async () => {
+  const message = `first line\nsecond line ${'x'.repeat(400)}`;
+  const upstream = chunks([
+    { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message } } },
+  ]);
+  const output = await drain(createReviewStream(upstream, { fallback: 'deny' }));
+  const { reason } = JSON.parse(textOf(output));
+  assert.doesNotMatch(reason, /\n/, 'the approval prompt is one line');
+  assert.match(reason, /first line second line/);
+  assert.ok(reason.length < 320, 'the provider message is capped');
+});
+
+test('spends no retry on a provider error', async () => {
+  let attempts = 0;
+  const output = await drain(
+    createReviewStream(
+      chunks([{ type: 'finish', reason: { kind: 'error', failure: { code: 'QUOTA', message: 'slow down' } } }]),
+      {
+        retry: 2,
+        fallback: 'deny',
+        attempt: async () => {
+          attempts += 1;
+          return chunks([{ type: 'finish', reason: { kind: 'stop' } }]);
+        },
+      },
+    ),
+  );
+  assert.equal(attempts, 0, 'a format correction cannot repair a request that never ran');
+  assert.equal(JSON.parse(textOf(output)).decision, 'deny');
+});
+
+test('leaves an abort untouched even under the deny fallback', async () => {
+  const upstream = chunks([{ type: 'finish', reason: { kind: 'aborted' } }]);
+  const output = await drain(createReviewStream(upstream, { fallback: 'deny' }));
+  assert.deepEqual(output, [{ type: 'finish', reason: { kind: 'aborted' } }]);
+});
+
+test('degrades a provider error raised by the retry attempt', async () => {
+  const stream = createReviewStream(
+    chunks([
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'thinking' },
+      { type: 'text-delta', index: 1, text: 'no decision here' },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ]),
+    {
+      retry: 1,
+      fallback: 'deny',
+      attempt: async () =>
+        chunks([
+          { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'Connection error.' } } },
+        ]),
+    },
+  );
+  const output = await drain(stream);
+
+  const text = output.find((chunk) => chunk.type === 'text-delta');
+  assert.equal(JSON.parse(text.text).decision, 'deny');
+  assert.match(JSON.parse(text.text).reason, /TRANSPORT/);
+  assert.equal(text.index, 2, 'the fallback text must not reuse a forwarded index');
+  assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
 });
 
 test('degrades an unreadable reply to a denial that can be approved', async () => {

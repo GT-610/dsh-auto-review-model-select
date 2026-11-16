@@ -153,6 +153,38 @@ test('retries an unreadable reply with one correction message', async () => {
   assert.equal(JSON.parse(output.find((chunk) => chunk.type === 'text-delta').text).decision, 'deny');
 });
 
+test('turns an unavailable reviewer into an approval instead of a blocked call', async () => {
+  const seen = [];
+  const { ctx, dispatch } = harness((options) => {
+    seen.push(options);
+    return (async function* raw() {
+      yield { type: 'finish', reason: { kind: 'error', failure: { code: 'QUOTA', message: 'rate limited' } } };
+    })();
+  });
+  // The defaults: repair on, retry 1, fallback `deny`.
+  apply(ctx, {});
+  const output = await drain(dispatch(reviewRequest()));
+
+  assert.equal(seen.length, 1, 'a request that never ran is not retried with a format correction');
+  const decision = JSON.parse(output.find((chunk) => chunk.type === 'text-delta').text);
+  assert.equal(decision.risk, 'medium');
+  assert.equal(decision.decision, 'deny');
+  assert.match(decision.reason, /QUOTA/);
+  assert.deepEqual(output.at(-1).reason, { kind: 'stop' });
+});
+
+test('keeps the blocked call when the fallback asks for it', async () => {
+  const failure = { code: 'QUOTA', message: 'rate limited' };
+  const { ctx, dispatch } = harness(() =>
+    (async function* raw() {
+      yield { type: 'finish', reason: { kind: 'error', failure } };
+    })(),
+  );
+  apply(ctx, { fallback: 'fail' });
+  const output = await drain(dispatch(reviewRequest()));
+  assert.deepEqual(output, [{ type: 'finish', reason: { kind: 'error', failure } }]);
+});
+
 test('leaves the request alone when the plugin is disabled', async () => {
   const seen = [];
   const { ctx, dispatch } = harness((options) => {
