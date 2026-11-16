@@ -1,0 +1,14 @@
+# Normalize every text file to LF, in the repository and in every working tree.
+#
+# The committed build artifacts must be byte-reproducible: a build embeds the
+# source it read (sourcemap `sourcesContent`), so a CRLF working tree on one
+# platform and an LF one on another produce maps that differ. CI rebuilds and
+# compares `dist/` against the committed copy, which only works when every
+# checkout has the same line endings.
+* text=auto eol=lf
+
+# Binary assets keep their bytes untouched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.webp binary

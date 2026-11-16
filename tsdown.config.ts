@@ -16,12 +16,27 @@ import { defineConfig } from 'tsdown';
 const CLIENT_ID = 'dsh-auto-review-model-select';
 
 /**
- * Modules the web shell seeds into the frozen module table before any plugin
- * runs. Keep this to what the Client half actually imports: an entry listed
- * here but never required changes nothing, and the Client test fails on any
- * other require.
+ * The modules the web shell seeds into the frozen module table before any plugin
+ * runs. A client bundle must require these, never inline them, so the list is
+ * kept identical to `BASELINE` in `scripts/check-client-purity.mjs` — that script
+ * reads the emitted artifact and is what stops a request the table cannot serve.
+ *
+ * Listing a module this half never imports changes nothing; the Client test
+ * fails on any require outside `PLATFORM_MODULES`.
  */
-const PLATFORM_MODULES = ['react', 'react/jsx-runtime'];
+const PLATFORM_MODULES = [
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  '@deepseek-ai/cordis',
+  'zod',
+  '@tanstack/react-virtual',
+  '@deepseek-ai/dsh-client-store',
+  '@deepseek-ai/dsh-client-ui-slots',
+  '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-dockkit',
+];
 
 export default defineConfig([
   {

@@ -22,13 +22,45 @@ This plugin fixes the second problem and makes the route configurable.
 
 ## Install
 
+Requires DSH `>= 0.2.2-rc.1`; building and testing need Node.js `>= 22.19.0`.
+
+Not on npm yet — install from GitHub:
+
 ```sh
-dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
+dsh plugin --profile <profile> add github:GT-610/dsh-auto-review-model-select
 ```
 
-Or install the local package from Settings → Plugins. **A newly installed bundle needs a DSH restart before its client half loads.**
+Or clone it and install the local directory:
+
+```sh
+git clone https://github.com/GT-610/dsh-auto-review-model-select
+dsh plugin --profile <profile> add /path/to/dsh-auto-review-model-select
+```
+
+Restart DSH afterwards. `dist/` is committed, so a git install needs no build script allowed; a local package can also be installed from Settings → Plugins.
 
 Settings live at **Settings → Plugins → Auto review model → Configuration**.
+
+### Local development
+
+```sh
+pnpm install
+pnpm build       # rebuild dist/ after a source change
+```
+
+Link the checkout into the profile's `node_modules`:
+
+```sh
+# macOS / Linux
+ln -s "$PWD" ~/.dsh/profiles/<profile>/node_modules/dsh-auto-review-model-select
+```
+
+```powershell
+# Windows
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.dsh\profiles\<profile>\node_modules\dsh-auto-review-model-select" -Target (Get-Location)
+```
+
+Then run `pnpm dev` (`tsdown --watch`). A Client change takes effect on a page reload; a Host change (`src/index.ts`, `src/repair.ts`) needs a DSH restart.
 
 ## Configuration
 
@@ -66,9 +98,19 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 
 ```sh
 pnpm install
-pnpm check   # typecheck + lint + build + unit tests
+pnpm check   # typecheck + lint + build + unit tests + bundle purity + locale cards
 pnpm test    # rebuild the client artifact, then run the tests
 ```
+
+`dist/` is committed, and CI rebuilds it and compares: a drifted artifact fails the build.
+
+The client artifact may only `require` modules from the shell's frozen module table; `scripts/check-client-purity.mjs` reads the emitted bundle and refuses anything else. That failure never surfaces in typechecking or tests — it only shows up at runtime, silently.
+
+## Compatibility
+
+- Changes the review request route and the decision output only; the main model, the Auto sandbox and the approval semantics stay as shipped.
+- Works alongside DSH's own `dsh-experimental-auto-review`; it does not replace it.
+- Settings copy follows the language selected in the DSH interface.
 
 ## License
 

@@ -22,13 +22,45 @@ DSH 的 Auto review 是**逐调用**的模型授权门：每次工具调用执�
 
 ## 安装
 
+需要 DSH `>= 0.2.2-rc.1`；构建和测试需要 Node.js `>= 22.19.0`。
+
+尚未发布到 npm，从 GitHub 安装：
+
 ```sh
-dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
+dsh plugin --profile <profile> add github:GT-610/dsh-auto-review-model-select
 ```
 
-或在「设置 → 插件」里安装本地包。**新装的 bundle 需要重启 DSH 才会加载客户端部分。**
+也可以克隆后安装本地目录：
+
+```sh
+git clone https://github.com/GT-610/dsh-auto-review-model-select
+dsh plugin --profile <profile> add /path/to/dsh-auto-review-model-select
+```
+
+装好后重启 DSH。`dist/` 随仓库提交，从 git 安装无需放行构建脚本；本地包也可以在「设置 → 插件」里安装。
 
 安装后，设置位置：**设置 → 插件 → 自动审查模型 → 配置**。
+
+### 本地开发
+
+```sh
+pnpm install
+pnpm build       # 改了源码后重建 dist/
+```
+
+把仓库链接进 profile 的 `node_modules`：
+
+```sh
+# macOS / Linux
+ln -s "$PWD" ~/.dsh/profiles/<profile>/node_modules/dsh-auto-review-model-select
+```
+
+```powershell
+# Windows
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.dsh\profiles\<profile>\node_modules\dsh-auto-review-model-select" -Target (Get-Location)
+```
+
+之后运行 `pnpm dev`（`tsdown --watch`）。客户端改动刷新页面即可；Host 半边（`src/index.ts`、`src/repair.ts`）改动需要重启 DSH。
 
 ## 配置
 
@@ -66,9 +98,19 @@ dsh plugin --profile desktop add /path/to/dsh-auto-review-model-select
 
 ```sh
 pnpm install
-pnpm check   # 类型检查 + 代码检查 + 构建 + 单元测试
+pnpm check   # 类型检查 + 代码检查 + 构建 + 单元测试 + 产物纯净度 + 语言卡片
 pnpm test    # 重新构建客户端产物并跑测试
 ```
+
+`dist/` 随仓库提交，CI 会重新构建并比对，产物漂移直接失败。
+
+客户端产物只能 `require` 外壳冻结模块表里的模块；`scripts/check-client-purity.mjs` 读取构建结果拒绝越界请求——这类错误不会在类型检查或测试阶段暴露，只会在运行时静默失效。
+
+## 兼容性
+
+- 仅换审查请求的路由与裁决输出，不改变主模型、Auto 沙箱或审批语义。
+- 与 DSH 自带的 `dsh-experimental-auto-review` 配合工作，不替换它。
+- 设置页文案跟随 DSH 界面的语言。
 
 ## 许可
 

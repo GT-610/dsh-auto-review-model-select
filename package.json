@@ -1,12 +1,27 @@
 {
   "name": "dsh-auto-review-model-select",
-  "version": "0.2.0",
-  "private": true,
-  "packageManager": "pnpm@12.3.4",
-  "license": "MIT",
-  "type": "module",
+  "version": "0.1.0",
   "description": "Route DeepSeek Harness Auto review to a chosen model and normalize its decision output.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "auto-review",
+    "model",
+    "approval"
+  ],
+  "homepage": "https://github.com/GT-610/dsh-auto-review-model-select#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GT-610/dsh-auto-review-model-select.git"
+  },
+  "bugs": "https://github.com/GT-610/dsh-auto-review-model-select/issues",
+  "author": "GT610 (https://github.com/GT-610)",
+  "license": "MIT",
+  "private": true,
   "icon": "./icon.svg",
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
   "engines": {
     "node": ">=22.19.0",
     "dsh": ">=0.2.2-rc.1"
@@ -29,12 +44,17 @@
   ],
   "scripts": {
     "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "test": "tsdown && node --test \"tests/*.test.mjs\"",
-    "check": "tsc --noEmit && oxlint && tsdown && node --test \"tests/*.test.mjs\""
+    "check:bundle": "node scripts/check-client-purity.mjs",
+    "check:locale": "node scripts/check-locale.mjs",
+    "check": "tsc --noEmit && oxlint && tsdown && node --test \"tests/*.test.mjs\" && node scripts/check-client-purity.mjs && node scripts/check-locale.mjs"
   },
   "dsh": {
+    "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

@@ -49,3 +49,15 @@ jobs:
         run: |
           git add -N dist
           git diff --exit-code HEAD -- dist
+
+      # A client bundle may only request the shell's baseline modules; a request
+      # outside it fails at runtime, where the settings card silently never
+      # renders. Nothing above reads the emitted artifact, so this is the only
+      # step that can catch it.
+      - name: Client bundle stays on the baseline
+        run: pnpm run check:bundle
+
+      # The settings-card dictionaries are checked by `tsc` and the tests; the
+      # marketplace card files are plain JSON that nothing else parses.
+      - name: Locale cards parse and agree
+        run: pnpm run check:locale
