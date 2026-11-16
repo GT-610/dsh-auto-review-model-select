@@ -1034,6 +1034,28 @@ function fallbackDecision(detail) {
 		reason: `Auto review could not read a valid decision (${detail}). Approve this call manually if it is safe.`
 	};
 }
+/** Longest provider message carried into a fallback reason. */
+const FAILURE_DETAIL_MAX = 200;
+/**
+* Describe one provider failure for the fallback reason.
+*
+* The gate keeps the original failure to itself: it logs the message and turns
+* the call into `AUTO_REVIEW_FAILED`. Once that failure becomes an approval
+* prompt instead, this is the only place the reason the reviewer never answered
+* survives, so a quota or a dropped connection is named rather than guessed at.
+*
+* @param finish - the terminal chunk carrying the failure.
+* @returns a short description, capped so the prompt stays readable.
+*/
+function failureDetail(finish) {
+	const failure = finish.reason.failure;
+	if (failure === null || typeof failure !== "object") return "the reviewer request failed";
+	const { code, message } = failure;
+	const parts = [code, message].filter((part) => typeof part === "string").map((part) => part.replace(/\s+/g, " ").trim()).filter((part) => part !== "");
+	if (parts.length === 0) return "the reviewer request failed";
+	const detail = `the reviewer request failed: ${parts.join(": ")}`;
+	return detail.length <= FAILURE_DETAIL_MAX ? detail : `${detail.slice(0, 199)}…`;
+}
 /**
 * Drain one reviewer stream, forwarding reasoning and usage while buffering the
 * parts the protocol rejects.
@@ -1091,8 +1113,14 @@ async function* tee(stream) {
 /**
 * Wrap one reviewer stream in the repair protocol.
 *
-* Error and abort finishes pass through untouched (a provider failure must keep
-* its own message). Every other finish is re-read: the decision is recovered,
+* An `aborted` finish passes through untouched: it is the caller's own
+* cancellation, and answering it with an approval prompt would arrive after the
+* turn was already dropped.
+*
+* Every other finish yields a decision. An `error` finish is a provider failure
+* rather than a protocol failure — there is no reply to read and no format to
+* correct — so it spends no retry and settles through the same `fallback` as an
+* unreadable reply. Anything else is re-read: the decision is recovered,
 * optionally retried with a correction message, and emitted as one text block
 * followed by `stop`.
 *
@@ -1104,12 +1132,39 @@ function createReviewStream(upstream, options = {}) {
 	const retry = Number.isFinite(options.retry) ? Math.max(0, Math.trunc(options.retry)) : 0;
 	const fallback = options.fallback === "fail" ? "fail" : "deny";
 	const attempt = typeof options.attempt === "function" ? options.attempt : void 0;
+	/**
+	* End the stream the way the protocol requires: one text block holding the
+	* decision, then a synthetic `stop`. `index` is the highest block index
+	* already forwarded, so the text block never reuses a reasoning block's index.
+	* @param decision - the decision to emit.
+	* @param index - highest index already yielded, or -1 when nothing was.
+	* @returns the two terminal chunks.
+	*/
+	function* settle(decision, index) {
+		yield {
+			type: "text-delta",
+			index: index + 1,
+			text: JSON.stringify(decision)
+		};
+		yield {
+			type: "finish",
+			reason: { kind: "stop" }
+		};
+	}
 	return (async function* normalize() {
 		const first = yield* tee(upstream);
 		if (first.finish === void 0) throw new Error("auto-review: the reviewer stream ended without a finish chunk");
 		const kind = first.finish.reason.kind;
-		if (kind === "error" || kind === "aborted") {
+		if (kind === "aborted") {
 			yield first.finish;
+			return;
+		}
+		if (kind === "error") {
+			if (fallback === "fail") {
+				yield first.finish;
+				return;
+			}
+			yield* settle(fallbackDecision(failureDetail(first.finish)), first.index);
 			return;
 		}
 		let source = first.text.trim() === "" ? first.toolArguments : first.text;
@@ -1127,8 +1182,16 @@ function createReviewStream(upstream, options = {}) {
 			highest = Math.max(highest, next.index);
 			if (next.finish === void 0) break;
 			const nextKind = next.finish.reason.kind;
-			if (nextKind === "error" || nextKind === "aborted") {
+			if (nextKind === "aborted") {
 				yield next.finish;
+				return;
+			}
+			if (nextKind === "error") {
+				if (fallback === "fail") {
+					yield next.finish;
+					return;
+				}
+				yield* settle(fallbackDecision(failureDetail(next.finish)), highest);
 				return;
 			}
 			finish = next.finish;
@@ -1145,15 +1208,7 @@ function createReviewStream(upstream, options = {}) {
 				decision: fallbackDecision(parsed.detail)
 			};
 		}
-		yield {
-			type: "text-delta",
-			index: highest + 1,
-			text: JSON.stringify(parsed.decision)
-		};
-		yield {
-			type: "finish",
-			reason: { kind: "stop" }
-		};
+		yield* settle(parsed.decision, highest);
 	})();
 }
 // src/index.ts
@@ -1172,7 +1227,8 @@ function createReviewStream(upstream, options = {}) {
 * - it normalizes the reply stream with {@link createReviewStream}, so prose,
 *   Markdown fences, `allow` with a `reason`, `low + deny`, and a truncated
 *   finish no longer become `AUTO_REVIEW_FAILED`, and an unreadable reply
-*   degrades to an approval prompt instead of a hard failure.
+*   degrades to an approval prompt instead of a hard failure. A reviewer that
+*   never answered — a quota, a dropped connection — settles the same way.
 *
 * Every knob is optional; with no configuration the plugin only repairs output
 * and keeps the main model as the reviewer.

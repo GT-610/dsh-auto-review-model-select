@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review-model-select",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Route DeepSeek Harness Auto review to a chosen model and normalize its decision output.",
   "keywords": [
     "dsh",

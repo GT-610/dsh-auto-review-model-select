@@ -18,7 +18,7 @@ This plugin fixes the second problem and makes the route configurable.
 1. **Reviewer model.** Re-dispatches the `auto-review` request to a configured provider/model; leave both empty to follow the main model.
 2. **Format reminder.** Repeats the JSON contract at the end of the reviewer system prompt.
 3. **Output repair.** Normalizes the reply stream: prose, code fences, an unexpected `reason`, `low + deny`, `high + allow`, a `max-tokens` cut, or a decision emitted as a tool call.
-4. **Fail-closed fallback.** When no decision can be read, it degrades to `medium + deny`, which under the `ask` approval policy becomes an ordinary approval prompt instead of a failed tool call.
+4. **Fail-closed fallback.** When no decision can be read — or when the review request never reached the model at all (a quota, a dropped connection) — it degrades to `medium + deny`, which under the `ask` approval policy becomes an ordinary approval prompt instead of a failed tool call. An unavailable reviewer costs one decision, not every tool call in the turn.
 
 ## Install
 
@@ -73,7 +73,7 @@ Then run `pnpm dev` (`tsdown --watch`). A Client change takes effect on a page r
 | `hint` | `true` | Append the format reminder |
 | `repair` | `true` | Normalize the decision output |
 | `retry` | `1` | Extra attempts when nothing readable comes back (0–2) |
-| `fallback` | `"deny"` | Still unreadable: `deny` asks the user, `fail` lets the call fail |
+| `fallback` | `"deny"` | Unreadable reply or failed request: `deny` asks the user, `fail` lets the call fail |
 
 `provider` and `model` must be set together: setting only one follows the main model rather than switching half the route.
 
@@ -86,6 +86,7 @@ The same fields can be set on the plugin row in `cordis.patch.yml`; the settings
 - On the output side it buffers text and tool-call arguments, forwards reasoning and usage, drops text and tool blocks, and emits one text block plus a synthetic `stop` — the shape the gate's own `BlockAssembler` accepts.
 - Parsing order: whole-text `JSON.parse` first; if that fails, scan the balanced `{}`/`[]` runs in the text (which tolerates code fences, prose, and array wrappers along the way) and keep the last legal shape.
 - Normalization: `allow` never keeps a `reason`; `low + deny` becomes `medium + deny` (the denial survives); `high + allow` becomes `high + deny` (fail-closed).
+- Errors: a provider failure (a quota, a dropped connection) is not a protocol problem — there is no reply to read and no format to correct — so it spends no retry and settles through `fallback`, with the failure itself named in the approval prompt. An `aborted` finish passes through untouched, because that is the caller's own cancellation and an approval prompt for it would arrive after the turn was dropped.
 
 ## Limitations
 
